@@ -1,4 +1,5 @@
 from model import MultimodalT2DPredictor
+from whatif import run_what_if
 import streamlit as st
 import numpy as np
 import torch
@@ -8,7 +9,7 @@ st.title("🧬 Type 2 Diabetes Risk Predictor")
 
 st.write("Please fill in your health data to estimate your risk of developing Type 2 Diabetes.")
 
-# EHR Inputs
+# ---------------- INPUT FUNCTIONS ---------------- #
 def input_ehr():
     return np.array([
         st.number_input("Glucose Level"),
@@ -21,28 +22,25 @@ def input_ehr():
         st.number_input("Hemoglobin A1C")
     ], dtype=np.float32)
 
-# Lifestyle Inputs
 def input_lifestyle():
     age = st.number_input("Your Age")
     frame = st.selectbox("Body Frame Size", options=["small", "medium", "large"], index=1)
     waist = st.number_input("Waist Circumference (cm)")
     hip = st.number_input("Hip Circumference (cm)")
-
-    # Encode string to integer
     frame_encoded = {"small": 0, "medium": 1, "large": 2}[frame]
     return np.array([age, frame_encoded, waist, hip], dtype=np.float32)
 
-# Synthea Inputs
-def input_synthea():
+def input_clinical():
     return np.array([
-        st.number_input("Chronic Conditions Count"),
-        st.number_input("Medications Count"),
-        st.number_input("Abnormal Lab Tests"),
-        st.number_input("ER Visits Last Year"),
-        st.number_input("Vaccination Count")
+        st.number_input("Gender (1=Male, 0=Female)", value=1),
+        st.number_input("Year of Birth", value=1985),
+        st.number_input("Average Observations", value=30.0),
+        st.number_input("Average Measurements", value=35.0),
+        st.number_input("Chronic Condition Count", value=2.0)
     ], dtype=np.float32)
 
-# PIMA Inputs
+
+
 def input_pima():
     return np.array([
         st.number_input("Pregnancies"),
@@ -55,7 +53,6 @@ def input_pima():
         st.number_input("Age")
     ], dtype=np.float32)
 
-# CDC Inputs
 def input_cdc():
     return np.array([
         st.number_input("High Blood Pressure (1=Yes, 0=No)"),
@@ -70,7 +67,6 @@ def input_cdc():
         st.number_input("Days of Poor Mental Health (last 30)")
     ], dtype=np.float32)
 
-# Hospital Inputs
 def input_hospital():
     return np.array([
         st.number_input("Hospital Admissions (last year)"),
@@ -85,7 +81,7 @@ def input_hospital():
         st.number_input("Had Surgery (1=Yes, 0=No)")
     ], dtype=np.float32)
 
-# ---- FORM ----
+# ---------------- FORM ---------------- #
 with st.form("t2d_form"):
     st.subheader("📄 Electronic Health Record (EHR)")
     ehr = input_ehr()
@@ -93,8 +89,8 @@ with st.form("t2d_form"):
     st.subheader("🏃 Lifestyle Information")
     lifestyle = input_lifestyle()
 
-    st.subheader("🧬 Synthea Features")
-    synthea = input_synthea()
+    st.subheader("🏥 Clinical Summary")
+    clinical = input_clinical()
 
     st.subheader("🧪 PIMA Dataset")
     pima = input_pima()
@@ -107,12 +103,12 @@ with st.form("t2d_form"):
 
     submitted = st.form_submit_button("🔍 Predict Risk")
 
-# ---- Inference ----
+# ---------------- INFERENCE ---------------- #
 if submitted:
-    # Convert all to tensors
+    # Convert to tensors
     ehr_tensor = torch.tensor(ehr).unsqueeze(0)
     lifestyle_tensor = torch.tensor(lifestyle).unsqueeze(0)
-    synthea_tensor = torch.tensor(synthea).unsqueeze(0)
+    clinical_tensor = torch.tensor(clinical).unsqueeze(0)
     pima_tensor = torch.tensor(pima).unsqueeze(0)
     cdc_tensor = torch.tensor(cdc).unsqueeze(0)
     hosp_tensor = torch.tensor(hosp).unsqueeze(0)
@@ -121,7 +117,7 @@ if submitted:
     model = MultimodalT2DPredictor(
         ehr_dim=8,
         lifestyle_dim=4,
-        synthea_dim=5,
+        clinical_dim=5,
         pima_dim=8,
         cdc_dim=10,
         hosp_dim=10
@@ -130,10 +126,9 @@ if submitted:
     model.eval()
 
     with torch.no_grad():
-        output = model(ehr_tensor, lifestyle_tensor, synthea_tensor, pima_tensor, cdc_tensor, hosp_tensor)
+        output = model(ehr_tensor, lifestyle_tensor, clinical_tensor, pima_tensor, cdc_tensor, hosp_tensor)
         risk_score = torch.sigmoid(output).item()
 
-    # Show result
     st.success(f"✅ Predicted Type 2 Diabetes Risk Score: **{risk_score:.4f}**")
     if risk_score < 0.46:
         st.info("🟢 Low Risk — Keep maintaining a healthy lifestyle.")
@@ -142,3 +137,29 @@ if submitted:
     else:
         st.error("🔴 High Risk — Strongly recommended to consult a healthcare provider.")
 
+    # -------- WHAT IF SIMULATION -------- #
+    st.subheader("🔄 What-if Simulation")
+    bmi_index = 4  # index for BMI in ehr
+
+    new_bmi = st.slider("Try adjusting BMI", 10.0, 60.0, float(ehr[bmi_index]), step=0.5)
+    ehr_alt = ehr.copy()
+    ehr_alt[bmi_index] = new_bmi
+
+    baseline_input = {
+        "ehr": ehr.reshape(1, -1),
+        "lifestyle": lifestyle.reshape(1, -1),
+        "clinical": clinical.reshape(1, -1),
+        "pima": pima.reshape(1, -1),
+        "cdc": cdc.reshape(1, -1),
+        "hosp": hosp.reshape(1, -1)
+    }
+
+    changed_input = baseline_input.copy()
+    changed_input["ehr"] = ehr_alt.reshape(1, -1)
+
+    base_pred, changed_pred = run_what_if("best_model.pt", baseline_input, changed_input)
+    delta = changed_pred - base_pred
+
+    st.markdown(f"**Original BMI:** {ehr[bmi_index]:.1f} → **New BMI:** {new_bmi:.1f}")
+    st.markdown(f"**Original Risk:** {base_pred:.4f} → **New Risk:** {changed_pred:.4f}")
+    st.markdown(f"**Δ Change in Risk:** {delta:+.4f}")

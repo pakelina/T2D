@@ -1,106 +1,96 @@
-# data_processing.py
-
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-
-def load_synthea_features():
-    patients = pd.read_csv("datasets/csv/patients.csv")
-    conditions = pd.read_csv("datasets/csv/conditions.csv")
-    observations = pd.read_csv("datasets/csv/observations.csv")
-    observations.columns = observations.columns.str.upper()
-
-    observations['VALUE'] = pd.to_numeric(observations['VALUE'], errors='coerce')
-    observations.dropna(subset=['VALUE'], inplace=True)
-
-    important_obs = ["Body Weight", "Body Height", "BMI", "Hemoglobin A1c", "Systolic Blood Pressure", "Diastolic Blood Pressure"]
-    obs_filtered = observations[observations['DESCRIPTION'].isin(important_obs)]
-    obs_pivot = obs_filtered.pivot_table(index='PATIENT', columns='DESCRIPTION', values='VALUE', aggfunc='mean').reset_index()
-    chronic_conditions = conditions.groupby("PATIENT").size().reset_index(name="condition_count")
-    patient_df = patients[['Id', 'BIRTHDATE', 'GENDER', 'RACE']]
-    synthea_data = patient_df.merge(obs_pivot, left_on='Id', right_on='PATIENT', how='inner')
-    synthea_data = synthea_data.merge(chronic_conditions, left_on='Id', right_on='PATIENT', how='left')
-    synthea_data = synthea_data.drop(columns=[col for col in ['patient_x', 'patient_y'] if col in synthea_data.columns])
-
-    synthea_data['GENDER'] = synthea_data['GENDER'].map({'M': 0, 'F': 1})
-    synthea_data = pd.get_dummies(synthea_data, columns=['RACE'])
-
-    synthea_data.fillna(synthea_data.mean(numeric_only=True), inplace=True)
-    return synthea_data
+from clinical_preprocessing import load_clinical_features_
 
 def load_and_prepare_data():
+    # Load and preprocess EHR dataset
     ehr_df = pd.read_csv('datasets/diabetes.csv').dropna().reset_index(drop=True)
-    lifestyle_df = pd.read_csv('datasets/diabetes-2.csv').dropna().reset_index(drop=True)
-    lifestyle_df = lifestyle_df.drop(columns=['id', 'location', 'gender'], errors='ignore')
+    y = ehr_df['Outcome'].astype(int)
+    ehr_features = ehr_df.drop(columns=['Outcome'])
 
-    # Select only relevant 4 features for lifestyle
+    # Load and preprocess lifestyle dataset
     lifestyle_df = pd.read_csv('datasets/diabetes-2.csv').dropna().reset_index(drop=True)
     lifestyle_df.columns = lifestyle_df.columns.str.strip().str.lower()
     lifestyle_df = lifestyle_df[["age", "frame", "waist", "hip"]]
-
-    from sklearn.preprocessing import LabelEncoder
     lifestyle_df["frame"] = LabelEncoder().fit_transform(lifestyle_df["frame"])
 
-    synthea_df = load_synthea_features()
-    synthea_df = synthea_df.select_dtypes(include=[np.number])  # only numeric
-    synthea_df = synthea_df.iloc[:, :5]  # pick first 5 numerical features
+    # Load and preprocess clinical dataset from clinical_preprocessing.py
+    clinical_df = load_clinical_features_()
 
+    # Load and preprocess PIMA dataset
     pima_df = pd.read_csv("datasets/diabetes-3.csv")
+    pima_df = pima_df.dropna().reset_index(drop=True)
+    pima_features = pima_df.drop(columns=['Outcome'])
 
+    # Load and preprocess CDC dataset
     cdc_df = pd.read_csv("datasets/data8/diabetes_binary_5050split_health_indicators_BRFSS2015.csv")
     cdc_df = cdc_df[[
         "HighBP", "HighChol", "CholCheck", "BMI", "Smoker",
         "PhysActivity", "Fruits", "Veggies", "GenHlth", "MentHlth"
     ]]
+    cdc_df = cdc_df.dropna().reset_index(drop=True)
 
+    # Load and preprocess Hospital dataset
     hosp_df = pd.read_csv("datasets/data7/diabetic_data.csv")
     hosp_df.replace("?", np.nan, inplace=True)
-    hosp_df.drop(columns=["encounter_id", "patient_nbr", "weight", "payer_code", "medical_specialty"], inplace=True)
+    hosp_df.drop(columns=["encounter_id", "patient_nbr", "weight", "payer_code", "medical_specialty"], inplace=True, errors='ignore')
     hosp_df.dropna(inplace=True)
     for col in hosp_df.select_dtypes(include='object').columns:
         hosp_df[col] = LabelEncoder().fit_transform(hosp_df[col])
     hosp_df = hosp_df.drop(columns=["readmitted"], errors="ignore")
-    hosp_df = hosp_df.select_dtypes(include=[np.number]).iloc[:, :10]  # select first 10 numerical features
+    hosp_df = hosp_df.select_dtypes(include=[np.number]).iloc[:, :10]
 
-    # Align length
-    min_len = min(len(ehr_df), len(lifestyle_df), len(synthea_df), len(pima_df), len(cdc_df), len(hosp_df))
-    ehr_df = ehr_df.iloc[:min_len].reset_index(drop=True)
+    # Align all dataset lengths
+    min_len = min(len(ehr_features), len(lifestyle_df), len(clinical_df), len(pima_features), len(cdc_df), len(hosp_df))
+    ehr_features = ehr_features.iloc[:min_len].reset_index(drop=True)
     lifestyle_df = lifestyle_df.iloc[:min_len].reset_index(drop=True)
-    synthea_df = synthea_df.iloc[:min_len].reset_index(drop=True)
-    pima_df = pima_df.iloc[:min_len].reset_index(drop=True)
+    clinical_df = clinical_df.iloc[:min_len].reset_index(drop=True)
+    pima_features = pima_features.iloc[:min_len].reset_index(drop=True)
     cdc_df = cdc_df.iloc[:min_len].reset_index(drop=True)
     hosp_df = hosp_df.iloc[:min_len].reset_index(drop=True)
+    y = y.iloc[:min_len].reset_index(drop=True)
 
-    ehr_target = ehr_df['Outcome'].astype(int)
-    ehr_features = ehr_df.drop(columns=['Outcome'])
+    # Fill missing values
+    ehr_features = ehr_features.fillna(ehr_features.mean(numeric_only=True))
+    lifestyle_df = lifestyle_df.fillna(lifestyle_df.mean(numeric_only=True))
+    clinical_df = clinical_df.fillna(clinical_df.mean(numeric_only=True))
+    pima_features = pima_features.fillna(pima_features.mean(numeric_only=True))
+    cdc_df = cdc_df.fillna(cdc_df.mean(numeric_only=True))
+    hosp_df = hosp_df.fillna(hosp_df.mean(numeric_only=True))
 
-    # === Scale ===
+    # Standardize features
     ehr_scaled = StandardScaler().fit_transform(ehr_features)
     life_scaled = StandardScaler().fit_transform(lifestyle_df)
-    syn_scaled = StandardScaler().fit_transform(synthea_df)
-    pima_scaled = StandardScaler().fit_transform(pima_df.drop(columns=['Outcome']))
+    clin_scaled = StandardScaler().fit_transform(clinical_df)
+    pima_scaled = StandardScaler().fit_transform(pima_features)
     cdc_scaled = StandardScaler().fit_transform(cdc_df)
     hosp_scaled = StandardScaler().fit_transform(hosp_df)
 
-    # === Train/test split ===
-    X_ehr_train, X_ehr_test, X_life_train, X_life_test, X_syn_train, X_syn_test, X_pima_train, X_pima_test, X_cdc_train, X_cdc_test, X_hosp_train, X_hosp_test, y_train, y_test = train_test_split(
-        ehr_scaled, life_scaled, syn_scaled, pima_scaled, cdc_scaled, hosp_scaled, ehr_target.values, test_size=0.2, random_state=42)
+    # Split data
+    X_train = train_test_split(
+        ehr_scaled, life_scaled, clin_scaled, pima_scaled, cdc_scaled, hosp_scaled, y.values,
+        test_size=0.2, random_state=42
+    )
+    X_ehr_train, X_ehr_test, X_life_train, X_life_test, X_clin_train, X_clin_test, \
+        X_pima_train, X_pima_test, X_cdc_train, X_cdc_test, X_hosp_train, X_hosp_test, \
+        y_train, y_test = X_train
 
-    # === Convert to PyTorch tensors ===
-    def to_tensor(x): return torch.tensor(x, dtype=torch.float32)
+    def to_tensor(x):
+        return torch.tensor(x, dtype=torch.float32)
+
     train_ds = TensorDataset(
-        to_tensor(X_ehr_train), to_tensor(X_life_train), to_tensor(X_syn_train),
+        to_tensor(X_ehr_train), to_tensor(X_life_train), to_tensor(X_clin_train),
         to_tensor(X_pima_train), to_tensor(X_cdc_train), to_tensor(X_hosp_train),
         to_tensor(y_train).unsqueeze(1)
     )
     test_ds = TensorDataset(
-        to_tensor(X_ehr_test), to_tensor(X_life_test), to_tensor(X_syn_test),
+        to_tensor(X_ehr_test), to_tensor(X_life_test), to_tensor(X_clin_test),
         to_tensor(X_pima_test), to_tensor(X_cdc_test), to_tensor(X_hosp_test),
         to_tensor(y_test).unsqueeze(1)
     )
-
 
     return DataLoader(train_ds, batch_size=32, shuffle=True), DataLoader(test_ds, batch_size=32)
