@@ -20,6 +20,8 @@ def load_and_prepare_data():
 
     # Load and preprocess clinical dataset from clinical_preprocessing.py
     clinical_df = load_clinical_features_()
+    if "id" in clinical_df.columns:
+        clinical_df = clinical_df.drop(columns=["id"])
 
     # Load and preprocess PIMA dataset
     pima_df = pd.read_csv("datasets/diabetes-3.csv")

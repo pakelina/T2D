@@ -9,6 +9,10 @@ st.title("🧬 Type 2 Diabetes Risk Predictor")
 
 st.write("Please fill in your health data to estimate your risk of developing Type 2 Diabetes.")
 
+# ---------------- SESSION STATE INIT ---------------- #
+if "form_submitted" not in st.session_state:
+    st.session_state.form_submitted = False
+
 # ---------------- INPUT FUNCTIONS ---------------- #
 def input_ehr():
     return np.array([
@@ -38,8 +42,6 @@ def input_clinical():
         st.number_input("Average Measurements", value=35.0),
         st.number_input("Chronic Condition Count", value=2.0)
     ], dtype=np.float32)
-
-
 
 def input_pima():
     return np.array([
@@ -101,10 +103,30 @@ with st.form("t2d_form"):
     st.subheader("🏥 Hospital Utilization")
     hosp = input_hospital()
 
-    submitted = st.form_submit_button("🔍 Predict Risk")
+    if st.form_submit_button("🔍 Predict Risk"):
+        st.session_state.form_submitted = True
+        st.session_state.ehr = ehr
+        st.session_state.lifestyle = lifestyle
+        st.session_state.clinical = clinical
+        st.session_state.pima = pima
+        st.session_state.cdc = cdc
+        st.session_state.hosp = hosp
 
-# ---------------- INFERENCE ---------------- #
-if submitted:
+# ---------------- RESET OPTION ---------------- #
+if st.session_state.form_submitted:
+    if st.button("🔁 Reset Form"):
+        st.session_state.form_submitted = False
+        st.experimental_rerun()
+
+# ---------------- INFERENCE + WHAT-IF ---------------- #
+if st.session_state.form_submitted:
+    ehr = st.session_state.ehr
+    lifestyle = st.session_state.lifestyle
+    clinical = st.session_state.clinical
+    pima = st.session_state.pima
+    cdc = st.session_state.cdc
+    hosp = st.session_state.hosp
+
     # Convert to tensors
     ehr_tensor = torch.tensor(ehr).unsqueeze(0)
     lifestyle_tensor = torch.tensor(lifestyle).unsqueeze(0)

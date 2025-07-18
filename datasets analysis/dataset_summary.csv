@@ -1,0 +1,15 @@
+File,Path,Type,Shape,Missing %,Numeric cols,Categorical cols
+diabetes-3.csv,datasets/diabetes-3.csv,Pima EHR,"768 rows, 9 cols",0.0,9,0
+diabetes-2.csv,datasets/diabetes-2.csv,Lifestyle,"403 rows, 19 cols",7.51,16,3
+diabetes.csv,datasets/diabetes.csv,EHR,"768 rows, 9 cols",0.0,9,0
+IDS_mapping.csv,datasets/data7/IDS_mapping.csv,Unknown,"67 rows, 2 cols",5.22,0,2
+diabetic_data.csv,datasets/data7/diabetic_data.csv,Hospital,"101766 rows, 50 cols",3.56,13,37
+diabetes_012_health_indicators_BRFSS2015.csv,datasets/data8/diabetes_012_health_indicators_BRFSS2015.csv,Survey,"253680 rows, 22 cols",0.0,22,0
+diabetes_binary_health_indicators_BRFSS2015.csv,datasets/data8/diabetes_binary_health_indicators_BRFSS2015.csv,Survey,"253680 rows, 22 cols",0.0,22,0
+diabetes_binary_5050split_health_indicators_BRFSS2015.csv,datasets/data8/diabetes_binary_5050split_health_indicators_BRFSS2015.csv,Survey,"70692 rows, 22 cols",0.0,22,0
+measurement.csv,datasets/dataset/clinical_data/measurement.csv,Clinical,"114807 rows, 25 cols",9.1,18,7
+condition_occurrence.csv,datasets/dataset/clinical_data/condition_occurrence.csv,Clinical,"5902 rows, 16 cols",0.0,9,7
+visit_occurrence.csv,datasets/dataset/clinical_data/visit_occurrence.csv,Clinical,"2102 rows, 17 cols",0.0,10,7
+person.csv,datasets/dataset/clinical_data/person.csv,Clinical,"1067 rows, 18 cols",0.0,13,5
+observation.csv,datasets/dataset/clinical_data/observation.csv,Clinical,"279265 rows, 21 cols",1.32,14,7
+procedure_occurrence.csv,datasets/dataset/clinical_data/procedure_occurrence.csv,Clinical,"23241 rows, 16 cols",0.0,10,6
